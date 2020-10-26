@@ -10,7 +10,7 @@ from scipy.sparse import issparse, vstack
 
 from .. import _utils
 from .. import logging as logg
-from ..preprocessing._simple import _get_mean_var
+from ..preprocessing._simple import _get_mean_var, _get_mean_var_ignore_missing
 from .._compat import Literal
 from ..get import _get_obs_rep
 
@@ -85,6 +85,7 @@ class _RankGenes:
         groupby,
         reference='rest',
         use_raw=True,
+        ignore_missing=False,
         layer=None,
         comp_pts=False,
     ):
@@ -112,8 +113,16 @@ class _RankGenes:
         if issparse(X):
             X.eliminate_zeros()
 
+        if issparse(X) and ignore_missing:
+            raise ValueError('ignore_missing not implemented for sparse')
+        if (X < 0).any():
+            raise ValueError('Negative values in matrix. ignore_missing only works'
+                             'with values >= 0 with 0 beeing missing.')
+
         self.X = X
         self.var_names = adata_comp.var_names
+
+        self.ignore_missing = ignore_missing
 
         self.ireference = None
         if reference != 'rest':
@@ -170,12 +179,20 @@ class _RankGenes:
             if self.ireference is not None and imask == self.ireference:
                 continue
 
-            self.means[imask], self.vars[imask] = _get_mean_var(X_mask)
+            if self.ignore_missing:
+                self.means[imask], self.vars[imask] =_get_mean_var_ignore_missing(
+                    X_mask)
+            else:
+                self.means[imask], self.vars[imask] = _get_mean_var(X_mask)
 
             if self.ireference is None:
                 mask_rest = ~mask
                 X_rest = self.X[mask_rest]
-                self.means_rest[imask], self.vars_rest[imask] = _get_mean_var(X_rest)
+                if self.ignore_missing:
+                    self.means_rest[imask], self.vars_rest[imask] =\
+                        _get_mean_var_ignore_missing(X_rest)
+                else:
+                    self.means_rest[imask], self.vars_rest[imask] = _get_mean_var(X_rest)
                 # this can be costly for sparse data
                 if self.comp_pts:
                     self.pts_rest[imask] = get_nonzeros(X_rest) / X_rest.shape[0]
@@ -193,16 +210,26 @@ class _RankGenes:
 
             mean_group = self.means[group_index]
             var_group = self.vars[group_index]
-            ns_group = np.count_nonzero(mask)
+            if self.ignore_missing:
+                ns_group = np.count_nonzero(self.X[mask], axis=0)
+            else:
+                ns_group = np.count_nonzero(mask)
 
             if self.ireference is not None:
                 mean_rest = self.means[self.ireference]
                 var_rest = self.vars[self.ireference]
-                ns_other = np.count_nonzero(self.groups_masks[self.ireference])
+                if self.ignore_missing:
+                    ns_other = np.count_nonzero(
+                        self.X[self.groups_masks[self.ireference]], axis=0)
+                else:
+                    ns_other = np.count_nonzero(self.groups_masks[self.ireference])
             else:
                 mean_rest = self.means_rest[group_index]
                 var_rest = self.vars_rest[group_index]
-                ns_other = self.X.shape[0] - ns_group
+                if self.ignore_missing:
+                    ns_other = np.count_nonzero(self.X, axis=0) - ns_group
+                else:
+                    ns_other = self.X.shape[0] - ns_group
 
             if method == 't-test':
                 ns_rest = ns_other
@@ -418,6 +445,7 @@ def rank_genes_groups(
     adata: AnnData,
     groupby: str,
     use_raw: bool = True,
+    ignore_missing: bool = False,
     groups: Union[Literal['all'], Iterable[str]] = 'all',
     reference: str = 'rest',
     n_genes: Optional[int] = None,
@@ -444,6 +472,9 @@ def rank_genes_groups(
         The key of the observations grouping to consider.
     use_raw
         Use `raw` attribute of `adata` if present.
+    ignore_missing
+        Ignore missing/zero values in the test. Only implemented for t-test
+        and dense matrix.
     layer
         Key from `adata.layers` whose value will be used to perform tests on.
     groups
@@ -535,6 +566,9 @@ def rank_genes_groups(
     if method not in avail_methods:
         raise ValueError(f'Method must be one of {avail_methods}.')
 
+    if ignore_missing and method not in {'t-test', 't-test_overestim_var'}:
+        raise ValueError('ignore_missing only implemented for t-test')
+
     avail_corr = {'benjamini-hochberg', 'bonferroni'}
     if corr_method not in avail_corr:
         raise ValueError(f'Correction method must be one of {avail_corr}.')
@@ -566,11 +600,13 @@ def rank_genes_groups(
         reference=reference,
         method=method,
         use_raw=use_raw,
+        ignore_missing=ignore_missing,
         layer=layer,
         corr_method=corr_method,
     )
 
-    test_obj = _RankGenes(adata, groups_order, groupby, reference, use_raw, layer, pts)
+    test_obj = _RankGenes(adata, groups_order, groupby, reference, use_raw,
+                          ignore_missing, layer, pts)
 
     # for clarity, rename variable
     n_genes_user = n_genes
@@ -583,7 +619,8 @@ def rank_genes_groups(
     logg.debug(f'with sizes: {np.count_nonzero(test_obj.groups_masks, axis=1)}')
 
     test_obj.compute_statistics(
-        method, corr_method, n_genes_user, rankby_abs, tie_correct, **kwds
+        method, corr_method, n_genes_user, rankby_abs,
+        tie_correct, **kwds
     )
 
     if test_obj.pts is not None:

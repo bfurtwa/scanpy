@@ -15,6 +15,23 @@ def _get_mean_var(X, *, axis=0):
     return mean, var
 
 
+def _get_mean_var_ignore_missing(X, *, axis=0):
+    """
+    Replaces zeros with np.nan and ignores these values
+    for the calculation. Returns all nan results as zero.
+    """
+    X = np.where(X==0, np.nan, X)
+    mean = np.nanmean(X, axis=axis, dtype=np.float64)
+    mean_sq = np.nanmean(np.multiply(X, X), axis=axis, dtype=np.float64)
+    var = mean_sq - mean ** 2
+    # enforce R convention (unbiased estimator) for variance
+    var *= np.count_nonzero(~np.isnan(X), axis=axis) /\
+           (np.count_nonzero(~np.isnan(X), axis=axis) - 1)
+    mean = np.where(np.isnan(mean), 0, mean)
+    var = np.where(np.isnan(var), 0, var)
+    return mean, var
+
+
 def sparse_mean_variance_axis(mtx: sparse.spmatrix, axis: int):
     """
     This code and internal functions are based on sklearns

@@ -21,7 +21,7 @@ from .._utils import sanitize_anndata, deprecated_arg_names, view_to_actual, Any
 from .._compat import Literal
 from ..get import _get_obs_rep, _set_obs_rep
 from ._distributed import materialize_as_ndarray
-from ._utils import _get_mean_var
+from ._utils import _get_mean_var, _get_mean_var_ignore_missing
 
 # install dask if available
 try:

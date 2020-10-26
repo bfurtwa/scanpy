@@ -54,6 +54,12 @@ def get_true_scores():
     return true_names_t_test, true_names_wilcoxon,\
            true_scores_t_test, true_scores_wilcoxon
 
+def get_true_scores_ignore_missing():
+    with Path(HERE, 'objs_t_test_ignore_missing.pkl').open('rb') as f:
+        true_scores_t_test, true_names_t_test = pickle.load(f)
+
+    return true_names_t_test, true_scores_t_test
+
 
 def test_results_dense():
     seed(1234)
@@ -78,6 +84,28 @@ def test_results_dense():
     for name in true_scores_t_test.dtype.names:
         assert np.allclose(true_scores_wilcoxon[name][:7], adata.uns['rank_genes_groups']['scores'][name][:7])
     assert np.array_equal(true_names_wilcoxon[:7], adata.uns['rank_genes_groups']['names'][:7])
+
+
+def test_results_dense_ignore_missing():
+    seed(1234)
+
+    adata = get_example_data()
+
+    true_names_t_test, true_scores_t_test = get_true_scores_ignore_missing()
+
+    rank_genes_groups(adata, 'true_groups', n_genes=20, method='t-test',
+                      ignore_missing=True)
+
+    adata.uns['rank_genes_groups']['names'] = adata.uns['rank_genes_groups']['names'].astype(true_names_t_test.dtype)
+
+    #with open('objs_t_test_ignore_missing.pkl', 'wb') as handle:
+    #    pickle.dump([adata.uns['rank_genes_groups']['scores'],
+    #             adata.uns['rank_genes_groups']['names']],
+    #             handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    for name in true_scores_t_test.dtype.names:
+        assert np.allclose(true_scores_t_test[name], adata.uns['rank_genes_groups']['scores'][name])
+    assert np.array_equal(true_names_t_test, adata.uns['rank_genes_groups']['names'])
 
 
 def test_results_sparse():
