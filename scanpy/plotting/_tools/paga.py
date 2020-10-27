@@ -945,6 +945,7 @@ def paga_path(
     xlim: Tuple[Optional[int], Optional[int]] = (None, None),
     title: Optional[str] = None,
     left_margin=None,
+    top_margin=0.18,
     ytick_fontsize: Optional[int] = None,
     title_fontsize: Optional[int] = None,
     show_node_names: bool = True,
@@ -954,6 +955,7 @@ def paga_path(
     legend_fontweight: Union[int, _FontWeight, None] = None,
     normalize_to_zero_one: bool = False,
     as_heatmap: bool = True,
+    annotation_spacing=0.01,
     return_data: bool = False,
     show: Optional[bool] = None,
     save: Union[bool, str, None] = None,
@@ -993,6 +995,8 @@ def paga_path(
     as_heatmap
         Plot the timeseries as heatmap. If not plotting as heatmap,
         `annotations` have no effect.
+    annotation_spacing
+        Spacing between the annotation bars.
     show_node_names
         Plot the node names on the nodes bar.
     show_colorbar
@@ -1119,6 +1123,20 @@ def paga_path(
                 x_tick_labels.append(label)
     X = np.array(X)
     if as_heatmap:
+
+        # adjust subplots to fit groups and annotations bars with equal
+        # bar height as keys
+        ax_bounds = ax.get_position().bounds
+        total_height = ax_bounds[1] + ax_bounds[3]
+        additional_bars = 1 + len(annotations)
+        bottom_margin = 0.05
+        bar_height = (total_height - bottom_margin -
+                      (annotation_spacing*additional_bars)) / (len(keys) +
+                                                               additional_bars)
+        pl.subplots_adjust(bottom=((bar_height + annotation_spacing) *
+                                   additional_bars) + bottom_margin, top=1-top_margin)
+        ax_bounds = ax.get_position().bounds
+
         img = ax.imshow(X, aspect='auto', interpolation='nearest', cmap=color_map)
         if show_yticks:
             ax.set_yticks(range(len(X)))
@@ -1156,9 +1174,9 @@ def paga_path(
         groups_axis = pl.axes(
             (
                 ax_bounds[0],
-                ax_bounds[1] - ax_bounds[3] / len(keys),
+                ax_bounds[1] - (bar_height+annotation_spacing),
                 ax_bounds[2],
-                ax_bounds[3] / len(keys),
+                bar_height,
             )
         )
         groups = np.array(groups)[None, :]
@@ -1194,16 +1212,13 @@ def paga_path(
         groups_axis.grid(False)
         groups_axis.tick_params(axis='both', which='both', length=0)
         # further annotations
-        y_shift = ax_bounds[3] / len(keys)
         for ianno, anno in enumerate(annotations):
-            if ianno > 0:
-                y_shift = ax_bounds[3] / len(keys) / 2
             anno_axis = pl.axes(
                 (
                     ax_bounds[0],
-                    ax_bounds[1] - (ianno + 2) * y_shift,
+                    ax_bounds[1] - (bar_height+annotation_spacing) * (ianno + 2),
                     ax_bounds[2],
-                    y_shift,
+                    bar_height,
                 )
             )
             arr = np.array(anno_dict[anno])[None, :]
@@ -1232,7 +1247,10 @@ def paga_path(
         show = settings.autoshow if show is None else show
     _utils.savefig_or_show('paga_path', show=show, save=save)
     if return_data:
-        df = pd.DataFrame(data=X.T, columns=keys)
+        if n_avg == 1:
+            df = pd.DataFrame(data=X.T[0], columns=keys)
+        else:
+            df = pd.DataFrame(data=X.T, columns=keys)
         df['groups'] = moving_average(groups)  # groups is without moving average, yet
         if 'dpt_pseudotime' in anno_dict:
             df['distance'] = anno_dict['dpt_pseudotime'].T
