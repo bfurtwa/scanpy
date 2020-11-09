@@ -946,6 +946,7 @@ def paga_path(
     title: Optional[str] = None,
     left_margin=None,
     top_margin=0.18,
+    bottom_margin=0.02,
     ytick_fontsize: Optional[int] = None,
     title_fontsize: Optional[int] = None,
     show_node_names: bool = True,
@@ -955,7 +956,7 @@ def paga_path(
     legend_fontweight: Union[int, _FontWeight, None] = None,
     normalize_to_zero_one: bool = False,
     as_heatmap: bool = True,
-    annotation_spacing=0.01,
+    annotation_spacing=0.0,
     return_data: bool = False,
     show: Optional[bool] = None,
     save: Union[bool, str, None] = None,
@@ -1129,13 +1130,14 @@ def paga_path(
         ax_bounds = ax.get_position().bounds
         total_height = ax_bounds[1] + ax_bounds[3]
         additional_bars = 1 + len(annotations)
-        bottom_margin = 0.05
         bar_height = (total_height - bottom_margin -
                       (annotation_spacing*additional_bars)) / (len(keys) +
                                                                additional_bars)
-        pl.subplots_adjust(bottom=((bar_height + annotation_spacing) *
-                                   additional_bars) + bottom_margin, top=1-top_margin)
-        ax_bounds = ax.get_position().bounds
+        pl.subplots_adjust(left=left_margin,
+                           bottom=((bar_height + annotation_spacing) *
+                                   additional_bars) + bottom_margin,
+                           top=1-top_margin)
+        #ax_bounds = ax.get_position().bounds
 
         img = ax.imshow(X, aspect='auto', interpolation='nearest', cmap=color_map)
         if show_yticks:
@@ -1150,7 +1152,7 @@ def paga_path(
         if show_colorbar:
             pl.colorbar(img, ax=ax)
         left_margin = 0.2 if left_margin is None else left_margin
-        pl.subplots_adjust(left=left_margin)
+        #pl.subplots_adjust(left=left_margin)
     else:
         left_margin = 0.4 if left_margin is None else left_margin
         if len(keys) > 1:
